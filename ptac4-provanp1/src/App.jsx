@@ -6,14 +6,14 @@ export default function App() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
 
- 
+  
   const [titulo, setTitulo] = useState('');
   const [idEmEdicao, setIdEmEdicao] = useState(null);
   const [enviando, setEnviando] = useState(false);
 
   const API_URL = 'https://jsonplaceholder.typicode.com/todos';
 
-  
+ 
   useEffect(() => {
     const controle = new AbortController();
 
@@ -22,14 +22,14 @@ export default function App() {
         setCarregando(true);
         setErro(null);
 
-        const resp = await fetch(`${API_URL}?_limit=10`, { signal: controle.signal });
+        const resp = await fetch(`${API_URL}?_limit=15`, { signal: controle.signal });
         if (!resp.ok) throw new Error(`Erro HTTP: ${resp.status}`);
 
         const data = await resp.json();
         setIdeias(data);
       } catch (err) {
         if (err.name !== 'AbortError') {
-          setErro(err.message);
+          setErro(err.message || 'Falha ao conectar com o servidor.');
         }
       } finally {
         setCarregando(false);
@@ -41,7 +41,7 @@ export default function App() {
     return () => controle.abort();
   }, []);
 
-  
+ 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!titulo.trim()) return;
@@ -50,7 +50,7 @@ export default function App() {
 
     try {
       if (idEmEdicao) {
-       
+        
         const resp = await fetch(`${API_URL}/${idEmEdicao}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -60,27 +60,30 @@ export default function App() {
             userId: 1
           }),
         });
-        if (!resp.ok) throw new Error('Falha ao atualizar ideia');
+        if (!resp.ok) throw new Error('Falha ao atualizar a ideia.');
 
+        
         setIdeias(ideias.map(i => (i.id === idEmEdicao ? { ...i, title: titulo } : i)));
         setIdEmEdicao(null);
       } else {
-       
+        
         const resp = await fetch(API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            userId: 1,
             title: titulo,
-            completed: false,
-            userId: 1
+            completed: false
           }),
         });
-        if (!resp.ok) throw new Error('Falha ao cadastrar ideia');
+        if (!resp.ok) throw new Error('Falha ao cadastrar a nova ideia.');
 
         const novaIdeia = await resp.json();
+       
         setIdeias([{ ...novaIdeia, id: Date.now() }, ...ideias]);
       }
 
+      
       setTitulo('');
     } catch (err) {
       alert(err.message);
@@ -90,52 +93,68 @@ export default function App() {
   }
 
   
-  async function toggleConcluido(ideia) {
+  function iniciarEdicao(ideia) {
+    setIdEmEdicao(ideia.id);
+    setTitulo(ideia.title);
+  }
+
+  function cancelarEdicao() {
+    setIdEmEdicao(null);
+    setTitulo('');
+  }
+
+  
+  async function excluirIdeia(id) {
+    const listaAnterior = [...ideias];
+
+    
+    setIdeias(ideias.filter(i => i.id !== id));
+
+    try {
+      const resp = await fetch(`${API_URL}/${id}`, {
+        method: 'DELETE',
+      });
+      if (!resp.ok) throw new Error('Falha ao excluir a ideia no servidor.');
+    } catch (err) {
+      
+      alert(`Erro: ${err.message}. A ideia foi restaurada na lista.`);
+      setIdeias(listaAnterior);
+    }
+  }
+
+  
+  async function toggleStatus(ideia) {
+    const novoStatus = !ideia.completed;
+
+    
+    setIdeias(ideias.map(i => (i.id === ideia.id ? { ...i, completed: novoStatus } : i)));
+
     try {
       const resp = await fetch(`${API_URL}/${ideia.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...ideia,
-          completed: !ideia.completed
+          completed: novoStatus
         }),
       });
-      if (!resp.ok) throw new Error('Falha ao alterar status da ideia');
-
-      setIdeias(ideias.map(i => (i.id === ideia.id ? { ...i, completed: !i.completed } : i)));
+      if (!resp.ok) throw new Error('Falha ao alterar o status da ideia.');
     } catch (err) {
-      alert(err.message);
+      // Rollback do status em caso de falha na API
+      alert(`Erro: ${err.message}`);
+      setIdeias(ideias.map(i => (i.id === ideia.id ? { ...i, completed: ideia.completed } : i)));
     }
   }
 
- 
-  function iniciarEdicao(ideia) {
-    setIdEmEdicao(ideia.id);
-    setTitulo(ideia.title);
-  }
-
- 
-  async function excluirIdeia(id) {
-    try {
-      const resp = await fetch(`${API_URL}/${id}`, {
-        method: 'DELETE',
-      });
-      if (!resp.ok) throw new Error('Falha ao excluir ideia');
-
-      setIdeias(ideias.filter(i => i.id !== id));
-    } catch (err) {
-      alert(err.message);
-    }
-  }
-
+  
   if (carregando) return <p>Carregando ideias...</p>;
-  if (erro) return <p>Erro: {erro}</p>;
+  if (erro) return <p>Erro ao carregar dados: {erro}</p>;
 
   return (
     <div>
       <h1>Avaliação Vitor HUgo - PTAS 4</h1>
 
-      
+     
       <form onSubmit={handleSubmit}>
         <h3>{idEmEdicao ? 'Editar Ideia' : 'Nova Ideia'}</h3>
         <input
@@ -149,35 +168,33 @@ export default function App() {
           {enviando ? 'Enviando...' : idEmEdicao ? 'Salvar' : 'Adicionar'}
         </button>
         {idEmEdicao && (
-          <button
-            type="button"
-            onClick={() => { setIdEmEdicao(null); setTitulo(''); }}
-          >
+          <button type="button" onClick={cancelarEdicao}>
             Cancelar
           </button>
         )}
       </form>
 
-      {/* Exibição do estado vazio ou da lista */}
+      
       {ideias.length === 0 ? (
-        <p>Nenhuma ideia encontrada.</p>
+        <p>Nenhuma ideia por aqui — que tal cadastrar a primeira?</p>
       ) : (
+       
         <ul>
-          {ideias.map((i) => (
-            <li key={i.id}>
+          {ideias.map((ideia) => (
+            <li key={ideia.id}>
               <div>
-                <input
-                  type="checkbox"
-                  checked={i.completed}
-                  onChange={() => toggleConcluido(i)}
-                />
-                <span>
-                  {i.title}
-                </span>
+                <strong>{ideia.title}</strong>
+                <p>Status: {ideia.completed ? 'Executada' : 'Pendente'}</p>
               </div>
               <div>
-                <button onClick={() => iniciarEdicao(i)}>Editar</button>
-                <button onClick={() => excluirIdeia(i.id)}>Excluir</button>
+               
+                <button onClick={() => toggleStatus(ideia)}>
+                  {ideia.completed ? 'Marcar como Pendente' : 'Marcar como Executada'}
+                </button>
+                
+                <button onClick={() => iniciarEdicao(ideia)}>Editar</button>
+                
+                <button onClick={() => excluirIdeia(ideia.id)}>Excluir</button>
               </div>
             </li>
           ))}
